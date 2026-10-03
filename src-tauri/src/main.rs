@@ -1,93 +1,57 @@
-// FAMREV AI — Windows desktop app (Tauri 2)
-// Loads the FAMREV AI web UI in a clean native window, with a global hotkey,
-// system tray, native notifications, single-instance, and auto-update.
+// FAMREV AI — desktop shell (Tauri). Loads the live web UI, adds native
+// global hotkey, system tray, and keeps a single resident window.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use tauri::{
-    menu::{Menu, MenuItem},
-    tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState},
-    Manager, WindowEvent,
+    CustomMenuItem, GlobalShortcutManager, Manager, SystemTray, SystemTrayEvent,
+    SystemTrayMenu, SystemTrayMenuItem,
 };
-use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 
 fn toggle_window(app: &tauri::AppHandle) {
-    if let Some(win) = app.get_webview_window("main") {
-        if win.is_visible().unwrap_or(false) && win.is_focused().unwrap_or(false) {
-            let _ = win.hide();
+    if let Some(w) = app.get_window("main") {
+        if w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false) {
+            let _ = w.hide();
         } else {
-            let _ = win.show();
-            let _ = win.unminimize();
-            let _ = win.set_focus();
+            let _ = w.show();
+            let _ = w.set_focus();
+            let _ = w.unminimize();
         }
     }
 }
 
 fn main() {
+    let tray_menu = SystemTrayMenu::new()
+        .add_item(CustomMenuItem::new("show".to_string(), "Open FAMREV AI"))
+        .add_native_item(SystemTrayMenuItem::Separator)
+        .add_item(CustomMenuItem::new("quit".to_string(), "Quit"));
+    let tray = SystemTray::new().with_menu(tray_menu);
+
     tauri::Builder::default()
-        // Only one instance: launching again just focuses the existing window.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(win) = app.get_webview_window("main") {
-                let _ = win.show();
-                let _ = win.unminimize();
-                let _ = win.set_focus();
-            }
-        }))
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        // Global hotkey: Ctrl+Shift+Space summons/hides the app from anywhere.
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcut(Shortcut::new(
-                    Some(Modifiers::CONTROL | Modifiers::SHIFT),
-                    Code::Space,
-                ))
-                .unwrap()
-                .with_handler(|app, _shortcut, event| {
-                    if event.state == ShortcutState::Pressed {
-                        toggle_window(app);
-                    }
-                })
-                .build(),
-        )
-        .setup(|app| {
-            // System tray with a right-click menu.
-            let open_i = MenuItem::with_id(app, "open", "Open FAMREV AI", true, None::<&str>)?;
-            let hide_i = MenuItem::with_id(app, "hide", "Hide", true, None::<&str>)?;
-            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open_i, &hide_i, &quit_i])?;
-
-            let _tray = TrayIconBuilder::with_id("main-tray")
-                .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("FAMREV AI")
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "open" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show(); let _ = w.unminimize(); let _ = w.set_focus();
-                        }
-                    }
-                    "hide" => { if let Some(w) = app.get_webview_window("main") { let _ = w.hide(); } }
-                    "quit" => { app.exit(0); }
-                    _ => {}
-                })
-                // Left-click the tray icon to toggle the window.
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
-                        toggle_window(tray.app_handle());
-                    }
-                })
-                .build(app)?;
-
-            Ok(())
+        .system_tray(tray)
+        .on_system_tray_event(|app, event| match event {
+            SystemTrayEvent::LeftClick { .. } => toggle_window(app),
+            SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
+                "show" => toggle_window(app),
+                "quit" => std::process::exit(0),
+                _ => {}
+            },
+            _ => {}
         })
-        // Closing the window hides it to tray instead of quitting (claude.ai behavior).
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                let _ = window.hide();
+        .on_window_event(|e| {
+            // Closing the window hides to tray instead of quitting (resident app).
+            if let tauri::WindowEvent::CloseRequested { api, .. } = e.event() {
+                let _ = e.window().hide();
                 api.prevent_close();
             }
         })
+        .setup(|app| {
+            let handle = app.handle();
+            // Global hotkey: Ctrl+Shift+Space summons/hides the app.
+            let mut gs = app.global_shortcut_manager();
+            let h2 = handle.clone();
+            let _ = gs.register("CmdOrControl+Shift+Space", move || toggle_window(&h2));
+            Ok(())
+        })
         .run(tauri::generate_context!())
-        .expect("error while running FAMREV AI");
+        .expect("error while running FAMREV AI desktop");
 }
