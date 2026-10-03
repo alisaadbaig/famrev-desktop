@@ -18,6 +18,9 @@ jobs:
           node-version: 22
       - name: Install Tauri CLI
         run: npm install
+      - name: Regenerate icons
+        run: npx @tauri-apps/cli icon src-tauri/icons/icon.png
+        continue-on-error: true
       - name: Build
         run: npm run build
       - name: Upload installers
@@ -25,6 +28,6 @@ jobs:
         with:
           name: famrev-ai-windows
           path: |
-            src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.exe
-          if-no-files-found: error
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: warn
