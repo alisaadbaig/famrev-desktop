@@ -1,0 +1,13 @@
+{
+  "name": "famrev-ai-desktop",
+  "version": "1.0.0",
+  "description": "FAMREV AI desktop app",
+  "scripts": {
+    "tauri": "tauri",
+    "build": "tauri build",
+    "dev": "tauri dev"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
+  }
+}
