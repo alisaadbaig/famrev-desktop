@@ -45,7 +45,8 @@
         "minWidth": 480,
         "minHeight": 600,
         "resizable": true,
-        "center": true
+        "center": true,
+        "url": "https://chat.famrev.ai"
       }
     ]
   }
