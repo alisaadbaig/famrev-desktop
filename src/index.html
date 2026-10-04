@@ -1,6 +1,64 @@
-<!doctype html><html><head><meta charset="utf-8">
-<title>FAMREV AI</title>
-<style>html,body{margin:0;height:100%;background:#0a0a0c;color:#8fb34a;font-family:system-ui;display:flex;align-items:center;justify-content:center}</style>
-</head><body>Loading FAMREV AI…
-<script>location.replace("https://chat.famrev.ai");</script>
-</body></html>
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>FAMREV AI</title>
+  <style>
+    :root { --green:#5b8c2a; --ink:#1e241c; --bg:#f6f8f3; --dim:#6b7563; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    html,body { height:100%; }
+    body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--ink);
+           display:flex; align-items:center; justify-content:center; height:100vh; }
+    .box { text-align:center; max-width:440px; padding:40px; }
+    .logo { width:64px; height:64px; border-radius:16px; background:var(--green); margin:0 auto 24px;
+            display:flex; align-items:center; justify-content:center; font-size:32px; font-weight:800; color:#fff; }
+    h1 { font-size:22px; margin-bottom:12px; }
+    p { color:var(--dim); font-size:14px; line-height:1.6; margin-bottom:6px; }
+    .spin { width:40px; height:40px; border:4px solid #dde5d5; border-top-color:var(--green);
+            border-radius:50%; margin:0 auto 20px; animation:r .9s linear infinite; }
+    @keyframes r { to { transform:rotate(360deg); } }
+    button { margin-top:22px; background:var(--green); color:#fff; border:none; padding:11px 30px;
+             border-radius:9px; font-size:14px; font-weight:600; cursor:pointer; }
+    button:hover { filter:brightness(1.08); }
+    .err { display:none; }
+    .hint { font-size:12px; color:var(--dim); margin-top:20px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div id="loading">
+      <div class="spin"></div>
+      <h1>Connecting to FAMREV AI…</h1>
+      <p>Reaching chat.famrev.ai</p>
+    </div>
+    <div id="error" class="err">
+      <div class="logo">F</div>
+      <h1>Can't reach FAMREV AI</h1>
+      <p>The app couldn't connect to the FAMREV AI server.</p>
+      <p>Please make sure you're connected to the company network (or VPN),
+         then press Retry.</p>
+      <button onclick="go()">Retry</button>
+      <div class="hint">Server: chat.famrev.ai</div>
+    </div>
+  </div>
+  <script>
+    const SERVER = "https://chat.famrev.ai";
+    // Probe reachability with an <img> to the server's favicon — not subject to CORS.
+    // If it loads within the timeout, the server is up → navigate to the app.
+    // If it errors or times out → show the branded "can't reach" screen.
+    function show(id){ document.getElementById("loading").style.display = id==="loading"?"":"none";
+                       document.getElementById("error").style.display   = id==="error"  ?"":"none"; }
+    function go(){
+      show("loading");
+      let done = false;
+      const img = new Image();
+      const timer = setTimeout(() => { if(!done){ done=true; show("error"); } }, 6000);
+      img.onload  = () => { if(!done){ done=true; clearTimeout(timer); location.replace(SERVER); } };
+      img.onerror = () => { if(!done){ done=true; clearTimeout(timer); show("error"); } };
+      // cache-bust so it really hits the server each retry
+      img.src = SERVER + "/logo.png?_=" + Date.now();
+    }
+    go();
+  </script>
+</body>
+</html>

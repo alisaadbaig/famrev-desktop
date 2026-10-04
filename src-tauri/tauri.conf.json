@@ -3,7 +3,8 @@
     "beforeBuildCommand": "",
     "beforeDevCommand": "",
     "devPath": "../src",
-    "distDir": "../src"
+    "distDir": "../src",
+    "withGlobalTauri": true
   },
   "package": {
     "productName": "FAMREV AI",
@@ -12,20 +13,30 @@
   "tauri": {
     "allowlist": {
       "all": false,
-      "shell": { "all": false, "open": true },
-      "window": { "all": true },
-      "notification": { "all": true },
-      "globalShortcut": { "all": true }
+      "shell": {
+        "all": false,
+        "open": true
+      }
     },
     "bundle": {
       "active": true,
-      "targets": ["nsis"],
+      "targets": [
+        "nsis"
+      ],
       "identifier": "ai.famrev.desktop",
-      "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"],
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/icon.ico"
+      ],
       "publisher": "FAMREV"
     },
-    "security": { "csp": null },
-    "updater": { "active": false },
+    "security": {
+      "csp": null
+    },
+    "updater": {
+      "active": false
+    },
     "windows": [
       {
         "title": "FAMREV AI",
@@ -34,8 +45,7 @@
         "minWidth": 480,
         "minHeight": 600,
         "resizable": true,
-        "center": true,
-        "url": "https://chat.famrev.ai"
+        "center": true
       }
     ]
   }

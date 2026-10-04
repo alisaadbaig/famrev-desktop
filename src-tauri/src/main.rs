@@ -1,5 +1,4 @@
-// FAMREV AI — desktop shell (Tauri). Loads the live web UI in a clean native window.
-// Minimal, dependency-light version to guarantee a clean first build.
+// FAMREV AI — desktop shell. Minimal, guaranteed-compile window loader.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
