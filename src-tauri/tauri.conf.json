@@ -46,7 +46,8 @@
         "minHeight": 600,
         "resizable": true,
         "center": true,
-        "url": "https://chat.famrev.ai"
+        "url": "https://chat.famrev.ai",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=msSingleSignOnOSForPrimaryAccountIsShared"
       }
     ]
   }
