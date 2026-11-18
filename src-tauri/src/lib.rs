@@ -26,6 +26,11 @@ pub const SERVER: &str = match option_env!("FAMREV_URL") {
     Some(u) => u,
     None => "https://chat.famrev.ai",
 };
+/// WebView2 runs every window of the app in ONE browser process, which must be started with the SAME arguments for
+/// every window: a window asking for different ones is refused (2.0.0 crashed on Windows at start for that reason:
+/// the main window had these, the quick box had none). Every window gets exactly these.
+const WEBVIEW_ARGS: &str =
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=msSingleSignOnOSForPrimaryAccountIsShared";
 const QB_W: f64 = 660.0;
 const QB_H_MIN: f64 = 96.0;
 const QB_H_MAX: f64 = 760.0;
@@ -85,6 +90,7 @@ fn quickbox(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .resizable(true)
         .visible(false)
         .disable_drag_drop_handler() // files dropped on the box reach the page (its own drop handler)
+        .additional_browser_args(WEBVIEW_ARGS)
         .build()
 }
 
@@ -248,6 +254,7 @@ fn app_info(app: AppHandle) -> AppInfo {
 
 // ------------------------------------------------------------------------------------------------- app
 pub fn run() {
+    std::panic::set_hook(Box::new(|info| log(&format!("crash: {info}"))));
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| show_main(app)))
         .plugin(
@@ -275,21 +282,25 @@ pub fn run() {
                 .min_inner_size(480.0, 600.0)
                 .center()
                 .disable_drag_drop_handler() // files dragged onto FAMREV reach the page (attachments)
-                .additional_browser_args(
-                    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=msSingleSignOnOSForPrimaryAccountIsShared",
-                )
+                .additional_browser_args(WEBVIEW_ARGS)
                 .build()?;
-            quickbox(&h)?; // made now (hidden), so the hotkey shows it at once
+            // the quick box is made now (hidden), so the hotkey shows it at once; if it can't be made the app still
+            // runs (it is tried again when asked for) and the reason goes to the log
+            if let Err(e) = quickbox(&h) {
+                log(&format!("quick box not created at start: {e}"));
+            }
             if let Err(e) = h.global_shortcut().register(hotkey()) {
-                eprintln!("Ctrl+Alt+Space is taken by another program: {e}");
+                log(&format!("Ctrl+Alt+Space is taken by another program: {e}"));
             }
             let open = MenuItem::with_id(&h, "open", "Open FAMREV", true, None::<&str>)?;
             let qb = MenuItem::with_id(&h, "qb", "Quick box\tCtrl+Alt+Space", true, None::<&str>)?;
             let quit = MenuItem::with_id(&h, "quit", "Quit FAMREV", true, None::<&str>)?;
             let menu = Menu::with_items(&h, &[&open, &qb, &quit])?;
-            TrayIconBuilder::with_id("famrev")
-                .icon(h.default_window_icon().cloned().expect("app icon"))
-                .tooltip("FAMREV AI")
+            let mut tray = TrayIconBuilder::with_id("famrev");
+            if let Some(icon) = h.default_window_icon().cloned() {
+                tray = tray.icon(icon);
+            }
+            tray.tooltip("FAMREV AI")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, ev| match ev.id().as_ref() {
@@ -311,7 +322,10 @@ pub fn run() {
                         }
                     }
                 })
-                .build(&h)?;
+                .build(&h)
+                .map_err(|e| log(&format!("tray icon not created: {e}")))
+                .ok();
+            log(&format!("started {} for {}", h.package_info().version, SERVER));
             Ok(())
         })
         .on_window_event(|win, ev| {
@@ -322,5 +336,24 @@ pub fn run() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running FAMREV AI desktop");
+        .unwrap_or_else(|e| {
+            log(&format!("could not start: {e}"));
+            std::process::exit(1);
+        });
+}
+
+/// %LOCALAPPDATA%\FAMREV\desktop.log (the temp folder elsewhere): start-up problems and crashes, one line each, never
+/// page content. Kept small: started again when it passes 256 KB.
+fn log(msg: &str) {
+    use std::io::Write;
+    let dir = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir).join("FAMREV");
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("desktop.log");
+    if std::fs::metadata(&path).map(|m| m.len() > 256 * 1024).unwrap_or(false) {
+        let _ = std::fs::remove_file(&path);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let _ = writeln!(f, "{t} {msg}");
+    }
 }

@@ -37,6 +37,18 @@ jobs:
         env:
           FAMREV_URL: ${{ matrix.url }}
         run: npx tauri build ${{ matrix.config }}
+      - name: Smoke test (the app starts, makes both windows and keeps running)
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:LOCALAPPDATA 'FAMREV\desktop.log'
+          Remove-Item $log -ErrorAction SilentlyContinue
+          $p = Start-Process -FilePath 'src-tauri\target\release\famrev-ai-desktop.exe' -PassThru
+          Start-Sleep -Seconds 25
+          if (Test-Path $log) { Get-Content $log } else { Write-Host 'no log written' }
+          if ($p.HasExited) { Write-Error "FAMREV AI closed by itself after starting (exit code $($p.ExitCode))"; exit 1 }
+          Stop-Process -Id $p.Id -Force
+          if (-not (Test-Path $log) -or -not (Select-String -Path $log -Pattern ' started ' -Quiet)) { Write-Error 'the app did not finish starting'; exit 1 }
+          if (Select-String -Path $log -Pattern 'crash:|not created' -Quiet) { Write-Error 'a window or the tray icon could not be made (see the log above)'; exit 1 }
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:

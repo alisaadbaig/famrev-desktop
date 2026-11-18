@@ -51,6 +51,12 @@ On a Windows 11 PC instead: install Rust (https://rustup.rs) and Node 20+, then 
   not Alt+Space, which Windows and Microsoft Copilot use).
 - Programs the quick box may start: `PROGRAMS` in `src-tauri/src/lib.rs`.
 
+Version 2.0.1 (2026-11-18): fixes 2.0.0 closing by itself right after it opened on Windows. WebView2 needs every window
+of the app started with the same browser arguments; the quick box had none. Both windows now share them. Also:
+- a quick box or tray icon that can't be made no longer stops the app;
+- start-up problems and crashes go to `%LOCALAPPDATA%\FAMREV\desktop.log`;
+- every build starts the app on Windows for 25 s and fails if it closes or a window is missing.
+
 Version 2.0.0 (2026-11-18): Tauri 1 → 2; quick box window, global hotkey, tray, close-to-tray, single instance, window
 size memory, file drops reach the page, UAT build. Version 1.0.0 opened the window only (the hotkey, tray and
 notifications described for it had not been written).

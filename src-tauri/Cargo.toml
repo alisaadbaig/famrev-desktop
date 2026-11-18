@@ -1,6 +1,6 @@
 [package]
 name = "famrev-ai-desktop"
-version = "2.0.0"
+version = "2.0.1"
 description = "FAMREV AI Desktop"
 authors = ["FAMREV"]
 edition = "2021"
