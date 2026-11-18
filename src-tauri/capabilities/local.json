@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "local",
+  "description": "The app's own start page (src/index.html): it only asks which server to open.",
+  "windows": ["main"],
+  "permissions": ["allow-app-info"]
+}

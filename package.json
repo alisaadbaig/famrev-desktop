@@ -1,12 +1,14 @@
 {
   "name": "famrev-ai-desktop",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "FAMREV AI desktop app",
+  "private": true,
   "scripts": {
     "tauri": "tauri",
-    "build": "tauri build"
+    "build": "tauri build",
+    "build:uat": "tauri build --config src-tauri/tauri.uat.conf.json"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^1.6.0"
+    "@tauri-apps/cli": "^2.9.0"
   }
 }

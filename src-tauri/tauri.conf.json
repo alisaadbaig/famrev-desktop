@@ -1,54 +1,26 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "FAMREV AI",
+  "version": "2.0.0",
+  "identifier": "ai.famrev.desktop",
   "build": {
-    "beforeBuildCommand": "",
-    "beforeDevCommand": "",
-    "devPath": "../src",
-    "distDir": "../src",
-    "withGlobalTauri": true
+    "frontendDist": "../src"
   },
-  "package": {
-    "productName": "FAMREV AI",
-    "version": "1.0.0"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "shell": {
-        "all": false,
-        "open": true
-      }
-    },
-    "bundle": {
-      "active": true,
-      "targets": [
-        "nsis"
-      ],
-      "identifier": "ai.famrev.desktop",
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/icon.ico"
-      ],
-      "publisher": "FAMREV"
-    },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
     "security": {
-      "csp": null
-    },
-    "updater": {
-      "active": false
-    },
-    "windows": [
-      {
-        "title": "FAMREV AI",
-        "width": 1200,
-        "height": 820,
-        "minWidth": 480,
-        "minHeight": 600,
-        "resizable": true,
-        "center": true,
-        "url": "https://chat.famrev.ai",
-        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=msSingleSignOnOSForPrimaryAccountIsShared"
-      }
-    ]
+      "csp": null,
+      "capabilities": ["local", "remote"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "publisher": "FAMREV",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" }
+    }
   }
 }

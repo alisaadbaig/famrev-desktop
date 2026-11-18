@@ -29,7 +29,7 @@
     <div id="loading">
       <div class="spin"></div>
       <h1>Connecting to FAMREV AI…</h1>
-      <p>Reaching chat.famrev.ai</p>
+      <p>Reaching <span class="srv">the FAMREV server</span></p>
     </div>
     <div id="error" class="err">
       <div class="logo">F</div>
@@ -38,16 +38,15 @@
       <p>Please make sure you're connected to the company network (or VPN),
          then press Retry.</p>
       <button onclick="go()">Retry</button>
-      <div class="hint">Server: chat.famrev.ai</div>
+      <div class="hint">Server: <span class="srv"></span></div>
     </div>
   </div>
   <script>
-    const SERVER = "https://chat.famrev.ai";
-    // Probe reachability with an <img> to the server's favicon — not subject to CORS.
-    // If it loads within the timeout, the server is up → navigate to the app.
-    // If it errors or times out → show the branded "can't reach" screen.
+    // The server comes from the app (FAMREV_URL at build time: chat.famrev.ai, or uat.famrev.ai for the UAT build).
+    let SERVER = "https://chat.famrev.ai";
     function show(id){ document.getElementById("loading").style.display = id==="loading"?"":"none";
                        document.getElementById("error").style.display   = id==="error"  ?"":"none"; }
+    // Probe with an <img> (not subject to CORS): loads = the server is up → open it; else the "can't reach" screen.
     function go(){
       show("loading");
       let done = false;
@@ -55,10 +54,13 @@
       const timer = setTimeout(() => { if(!done){ done=true; show("error"); } }, 6000);
       img.onload  = () => { if(!done){ done=true; clearTimeout(timer); location.replace(SERVER); } };
       img.onerror = () => { if(!done){ done=true; clearTimeout(timer); show("error"); } };
-      // cache-bust so it really hits the server each retry
-      img.src = SERVER + "/logo.png?_=" + Date.now();
+      img.src = SERVER + "/static/favicon.png?_=" + Date.now();
     }
-    go();
+    (async () => {
+      try { const i = await window.__TAURI__.core.invoke("app_info"); if (i && i.server) SERVER = i.server; } catch (e) {}
+      document.querySelectorAll(".srv").forEach(x => x.textContent = SERVER.replace(/^https?:\/\//, ""));
+      go();
+    })();
   </script>
 </body>
 </html>
