@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qb-hide"
+description = "Enables the qb_hide command without any pre-configured scope."
+commands.allow = ["qb_hide"]
+
+[[permission]]
+identifier = "deny-qb-hide"
+description = "Denies the qb_hide command without any pre-configured scope."
+commands.deny = ["qb_hide"]

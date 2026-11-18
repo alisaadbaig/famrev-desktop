@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qb-resize"
+description = "Enables the qb_resize command without any pre-configured scope."
+commands.allow = ["qb_resize"]
+
+[[permission]]
+identifier = "deny-qb-resize"
+description = "Denies the qb_resize command without any pre-configured scope."
+commands.deny = ["qb_resize"]

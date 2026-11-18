@@ -1,33 +1,47 @@
 name: Build FAMREV AI Desktop (Windows)
 
+# Two installers per run: FAMREV AI (chat.famrev.ai) and FAMREV AI UAT (uat.famrev.ai, for QA; installs side by side).
 on:
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch: {}
 
 jobs:
   build:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - flavor: production
+            url: https://chat.famrev.ai
+            config: ''
+          - flavor: uat
+            url: https://uat.famrev.ai
+            config: '--config src-tauri/tauri.uat.conf.json'
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
       - name: Install Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Install Tauri CLI
         run: npm install
-      - name: Regenerate icons
-        run: npx @tauri-apps/cli icon src-tauri/icons/icon.png
-        continue-on-error: true
-      - name: Build
-        run: npm run build
+      - name: Build (${{ matrix.flavor }})
+        env:
+          FAMREV_URL: ${{ matrix.url }}
+        run: npx tauri build ${{ matrix.config }}
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: famrev-ai-windows
+          name: famrev-ai-windows-${{ matrix.flavor }}
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
-          if-no-files-found: warn
+          if-no-files-found: error
