@@ -11,7 +11,7 @@
 //! What the FAMREV pages may ask (capabilities/remote.json; only https://chat.famrev.ai and https://uat.famrev.ai):
 //!   qb_show / qb_hide / qb_toggle / qb_resize, open_main(route, conv), open_program(name from a FIXED list),
 //!   capture_screen (one picture of the screen the quick box is on, the box hidden while it is taken), app_info.
-//! Nothing else: no files, no shell, no other windows.
+//! Nothing else: no files, no shell, no other windows. (2.0.2: web links open in the default browser, open_link.)
 
 use base64::Engine;
 use serde::Serialize;
@@ -204,6 +204,40 @@ fn open_program(name: String) -> Result<(), String> {
     }
 }
 
+/// Open a web link in the person's default browser (Teams / Zoom links go on to their own app from there).
+/// 2.0.2 (owner 2026-11-20: "in calendar the Join button is not working in the desktop app"): WebView2 ignores links
+/// that ask for a new window (target=_blank), so the page asks the app instead. Only http(s) addresses on another
+/// host than FAMREV, no user name / password in them, at most 4,000 characters; started with explorer.exe and the
+/// address as ONE argument (no command shell, so `&` in an address can't run anything).
+#[tauri::command]
+fn open_link(url: String) -> Result<(), String> {
+    let u = check_link(&url)?;
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer.exe").arg(u.as_str()).spawn().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = u;
+        Err("opening links works on Windows only".into())
+    }
+}
+
+fn check_link(url: &str) -> Result<tauri::Url, String> {
+    if url.len() > 4000 || url.chars().any(|c| c.is_control() || c == '"' || c == ' ') {
+        return Err("not a web link".into());
+    }
+    let u = tauri::Url::parse(url).map_err(|_| "not a web link".to_string())?;
+    if u.scheme() != "https" && u.scheme() != "http" {
+        return Err("only web links (http / https) are opened".into());
+    }
+    if !u.username().is_empty() || u.password().is_some() || u.host_str().unwrap_or("").is_empty() {
+        return Err("not a web link".into());
+    }
+    Ok(u)
+}
+
 /// One picture of the screen the quick box is on, as a PNG data URL. The quick box hides while it is taken, so it is
 /// not in the picture. Only on the person's click in the page; nothing is saved on the PC.
 #[tauri::command]
@@ -272,7 +306,7 @@ pub fn run() {
                 .build(),
         )
         .manage(QbState::default())
-        .invoke_handler(tauri::generate_handler![qb_show, qb_hide, qb_toggle, qb_resize, open_main, open_program, capture_screen, app_info])
+        .invoke_handler(tauri::generate_handler![qb_show, qb_hide, qb_toggle, qb_resize, open_main, open_program, open_link, capture_screen, app_info])
         .setup(|app| {
             let h = app.handle().clone();
             // main window: the local start page checks the server is reachable, then opens it
@@ -355,5 +389,20 @@ fn log(msg: &str) {
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
         let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
         let _ = writeln!(f, "{t} {msg}");
+    }
+}
+
+
+#[cfg(test)]
+mod link_tests {
+    use super::check_link;
+    #[test]
+    fn web_links_only() {
+        assert!(check_link("https://teams.microsoft.com/l/meetup-join/19%3a1@thread.v2/0?context=%7b%7d&x=1").is_ok());
+        assert!(check_link("http://example.com/a").is_ok());
+        for bad in ["file:///C:/Windows/system32/calc.exe", "javascript:alert(1)", "ms-settings:", "msteams:/l/x",
+                    "https://user:pw@example.com/", "https://exa mple.com", "https://x.com/\"\" & calc", "https://", ""] {
+            assert!(check_link(bad).is_err(), "{bad}");
+        }
     }
 }
