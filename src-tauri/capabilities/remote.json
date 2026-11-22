@@ -14,6 +14,7 @@
     "allow-qb-resize",
     "allow-open-main",
     "allow-open-program",
+    "allow-open-link",
     "allow-capture-screen",
     "allow-app-info"
   ]
