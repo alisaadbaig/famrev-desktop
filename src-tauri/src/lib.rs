@@ -26,6 +26,11 @@ pub const SERVER: &str = match option_env!("FAMREV_URL") {
     Some(u) => u,
     None => "https://chat.famrev.ai",
 };
+/// WebView2 arguments for EVERY window. Both windows share one data folder (one sign-in), and WebView2 will not
+/// create a second window there with different arguments: the quick box then fails, setup fails, and the app quits
+/// at start (2.0.2 fix). Keep main and quickbox on this same value.
+const BROWSER_ARGS: &str =
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=msSingleSignOnOSForPrimaryAccountIsShared";
 const QB_W: f64 = 660.0;
 const QB_H_MIN: f64 = 96.0;
 const QB_H_MAX: f64 = 760.0;
@@ -85,6 +90,7 @@ fn quickbox(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .resizable(true)
         .visible(false)
         .disable_drag_drop_handler() // files dropped on the box reach the page (its own drop handler)
+        .additional_browser_args(BROWSER_ARGS) // must match the main window, or the box can't be created
         .build()
 }
 
@@ -309,9 +315,7 @@ pub fn run() {
                 .min_inner_size(480.0, 600.0)
                 .center()
                 .disable_drag_drop_handler() // files dragged onto FAMREV reach the page (attachments)
-                .additional_browser_args(
-                    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=msSingleSignOnOSForPrimaryAccountIsShared",
-                )
+                .additional_browser_args(BROWSER_ARGS)
                 .build()?;
             quickbox(&h)?; // made now (hidden), so the hotkey shows it at once
             if let Err(e) = h.global_shortcut().register(hotkey()) {
