@@ -26,6 +26,11 @@ pub const SERVER: &str = match option_env!("FAMREV_URL") {
     Some(u) => u,
     None => "https://chat.famrev.ai",
 };
+/// WebView2 arguments for EVERY window. Both windows share one data folder (one sign-in), and WebView2 will not
+/// create a second window there with different arguments: the quick box then fails, setup fails, and the app quits
+/// at start (2.0.2 fix). Keep main and quickbox on this same value.
+const BROWSER_ARGS: &str =
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=msSingleSignOnOSForPrimaryAccountIsShared";
 const QB_W: f64 = 660.0;
 const QB_H_MIN: f64 = 96.0;
 const QB_H_MAX: f64 = 760.0;
@@ -85,6 +90,7 @@ fn quickbox(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .resizable(true)
         .visible(false)
         .disable_drag_drop_handler() // files dropped on the box reach the page (its own drop handler)
+        .additional_browser_args(BROWSER_ARGS) // must match the main window, or the box can't be created
         .build()
 }
 
@@ -201,20 +207,40 @@ fn open_program(name: String) -> Result<(), String> {
 /// Open a web link in the person's default browser (Teams / Zoom links go on to their own app from there).
 /// 2.0.2 (owner 2026-11-20: "in calendar the Join button is not working in the desktop app"): WebView2 ignores links
 /// that ask for a new window (target=_blank), so the page asks the app instead. Only http(s) addresses on another
-/// host than FAMREV, no user name / password in them, at most 4,000 characters; started with explorer.exe and the
-/// address as ONE argument (no command shell, so `&` in an address can't run anything).
+/// host than FAMREV, no user name / password in them, at most 4,000 characters.
+/// 2.0.3 (owner 2026-11-22: "Join opens C:\\Users\\…\\Documents"): 2.0.2 started explorer.exe with the address, and
+/// explorer.exe treats an argument it cannot read as a path (Teams join links are long, with %-codes) and opens the
+/// Documents folder instead. Now Windows' own ShellExecuteW "open" gets the checked http(s) address: the default
+/// browser opens it, as when a link is clicked anywhere else. No command shell, no program name from the page.
 #[tauri::command]
 fn open_link(url: String) -> Result<(), String> {
     let u = check_link(&url)?;
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer.exe").arg(u.as_str()).spawn().map_err(|e| e.to_string())?;
-        Ok(())
+        shell_open(u.as_str())
     }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = u;
         Err("opening links works on Windows only".into())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn shell_open(url: &str) -> Result<(), String> {
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let wide = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+    let (verb, file) = (wide("open"), wide(url));
+    // SAFETY: both strings are NUL-terminated UTF-16 buffers that live until the call returns; the other pointers
+    // are null, which ShellExecuteW accepts (no owner window, no parameters, no working folder).
+    let r = unsafe {
+        ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL)
+    };
+    if r as isize > 32 {
+        Ok(())
+    } else {
+        Err(format!("Windows could not open the link (code {})", r as isize))
     }
 }
 
@@ -280,10 +306,49 @@ fn app_info(app: AppHandle) -> AppInfo {
     AppInfo { version: app.package_info().version.to_string(), server: SERVER.to_string(), os: std::env::consts::OS.to_string() }
 }
 
+// ------------------------------------------------------------------------------------------------- startup diagnostics
+/// %LOCALAPPDATA%\FAMREV\desktop-startup.log: each start writes its steps here, and any startup error or panic.
+fn log_path() -> std::path::PathBuf {
+    let base = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    base.join("FAMREV").join("desktop-startup.log")
+}
+
+fn slog(msg: &str) {
+    use std::io::Write;
+    let p = log_path();
+    if let Some(d) = p.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&p) {
+        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let _ = writeln!(f, "{t} [{} {}] {msg}", env!("CARGO_PKG_VERSION"), SERVER);
+    }
+}
+
+/// Log the error and show it in a box, so a failed start is not silent (release builds have no console).
+fn fail(msg: &str) {
+    slog(&format!("FATAL: {msg}"));
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+        let text = format!("FAMREV AI could not start.\n\n{msg}\n\nLog: {}", log_path().display());
+        let w = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+        let (t, c) = (w(&text), w("FAMREV AI"));
+        unsafe {
+            MessageBoxW(std::ptr::null_mut(), t.as_ptr(), c.as_ptr(), MB_OK | MB_ICONERROR);
+        }
+    }
+}
+
 // ------------------------------------------------------------------------------------------------- app
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| show_main(app)))
+    std::panic::set_hook(Box::new(|info| fail(&format!("panic: {info}"))));
+    slog("start");
+    let res = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            slog("second start: showing the running app");
+            show_main(app)
+        }))
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_denylist(&["quickbox"]) // the quick box always opens at the bottom centre
@@ -301,6 +366,7 @@ pub fn run() {
         .manage(QbState::default())
         .invoke_handler(tauri::generate_handler![qb_show, qb_hide, qb_toggle, qb_resize, open_main, open_program, open_link, capture_screen, app_info])
         .setup(|app| {
+            slog("setup: plugins loaded");
             let h = app.handle().clone();
             // main window: the local start page checks the server is reachable, then opens it
             WebviewWindowBuilder::new(&h, "main", WebviewUrl::App("index.html".into()))
@@ -309,13 +375,14 @@ pub fn run() {
                 .min_inner_size(480.0, 600.0)
                 .center()
                 .disable_drag_drop_handler() // files dragged onto FAMREV reach the page (attachments)
-                .additional_browser_args(
-                    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=msSingleSignOnOSForPrimaryAccountIsShared",
-                )
-                .build()?;
-            quickbox(&h)?; // made now (hidden), so the hotkey shows it at once
+                .additional_browser_args(BROWSER_ARGS)
+                .build()
+                .map_err(|e| { slog(&format!("main window failed: {e}")); e })?;
+            slog("setup: main window ok");
+            quickbox(&h).map_err(|e| { slog(&format!("quick box failed: {e}")); e })?;
+            slog("setup: quick box ok"); // made now (hidden), so the hotkey shows it at once
             if let Err(e) = h.global_shortcut().register(hotkey()) {
-                eprintln!("Ctrl+Alt+Space is taken by another program: {e}");
+                slog(&format!("Ctrl+Alt+Space is taken by another program: {e}"));
             }
             let open = MenuItem::with_id(&h, "open", "Open FAMREV", true, None::<&str>)?;
             let qb = MenuItem::with_id(&h, "qb", "Quick box\tCtrl+Alt+Space", true, None::<&str>)?;
@@ -345,7 +412,9 @@ pub fn run() {
                         }
                     }
                 })
-                .build(&h)?;
+                .build(&h)
+                .map_err(|e| { slog(&format!("tray failed: {e}")); e })?;
+            slog("setup: tray ok, started");
             Ok(())
         })
         .on_window_event(|win, ev| {
@@ -355,8 +424,10 @@ pub fn run() {
                 let _ = win.hide();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running FAMREV AI desktop");
+        .run(tauri::generate_context!());
+    if let Err(e) = res {
+        fail(&format!("{e}"));
+    }
 }
 
 
