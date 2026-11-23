@@ -1,6 +1,6 @@
 [package]
 name = "famrev-ai-desktop"
-version = "2.0.2"
+version = "2.0.3"
 description = "FAMREV AI Desktop"
 authors = ["FAMREV"]
 edition = "2021"
@@ -24,7 +24,8 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 xcap = "0.9"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+# ShellExecuteW for open_link (2.0.3) and the startup error box (MessageBoxW)
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
