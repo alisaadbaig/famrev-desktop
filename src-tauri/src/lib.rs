@@ -207,20 +207,40 @@ fn open_program(name: String) -> Result<(), String> {
 /// Open a web link in the person's default browser (Teams / Zoom links go on to their own app from there).
 /// 2.0.2 (owner 2026-11-20: "in calendar the Join button is not working in the desktop app"): WebView2 ignores links
 /// that ask for a new window (target=_blank), so the page asks the app instead. Only http(s) addresses on another
-/// host than FAMREV, no user name / password in them, at most 4,000 characters; started with explorer.exe and the
-/// address as ONE argument (no command shell, so `&` in an address can't run anything).
+/// host than FAMREV, no user name / password in them, at most 4,000 characters.
+/// 2.0.3 (owner 2026-11-22: "Join opens C:\\Users\\…\\Documents"): 2.0.2 started explorer.exe with the address, and
+/// explorer.exe treats an argument it cannot read as a path (Teams join links are long, with %-codes) and opens the
+/// Documents folder instead. Now Windows' own ShellExecuteW "open" gets the checked http(s) address: the default
+/// browser opens it, as when a link is clicked anywhere else. No command shell, no program name from the page.
 #[tauri::command]
 fn open_link(url: String) -> Result<(), String> {
     let u = check_link(&url)?;
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer.exe").arg(u.as_str()).spawn().map_err(|e| e.to_string())?;
-        Ok(())
+        shell_open(u.as_str())
     }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = u;
         Err("opening links works on Windows only".into())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn shell_open(url: &str) -> Result<(), String> {
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let wide = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+    let (verb, file) = (wide("open"), wide(url));
+    // SAFETY: both strings are NUL-terminated UTF-16 buffers that live until the call returns; the other pointers
+    // are null, which ShellExecuteW accepts (no owner window, no parameters, no working folder).
+    let r = unsafe {
+        ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL)
+    };
+    if r as isize > 32 {
+        Ok(())
+    } else {
+        Err(format!("Windows could not open the link (code {})", r as isize))
     }
 }
 
