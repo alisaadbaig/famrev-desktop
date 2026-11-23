@@ -286,10 +286,49 @@ fn app_info(app: AppHandle) -> AppInfo {
     AppInfo { version: app.package_info().version.to_string(), server: SERVER.to_string(), os: std::env::consts::OS.to_string() }
 }
 
+// ------------------------------------------------------------------------------------------------- startup diagnostics
+/// %LOCALAPPDATA%\FAMREV\desktop-startup.log: each start writes its steps here, and any startup error or panic.
+fn log_path() -> std::path::PathBuf {
+    let base = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    base.join("FAMREV").join("desktop-startup.log")
+}
+
+fn slog(msg: &str) {
+    use std::io::Write;
+    let p = log_path();
+    if let Some(d) = p.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&p) {
+        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let _ = writeln!(f, "{t} [{} {}] {msg}", env!("CARGO_PKG_VERSION"), SERVER);
+    }
+}
+
+/// Log the error and show it in a box, so a failed start is not silent (release builds have no console).
+fn fail(msg: &str) {
+    slog(&format!("FATAL: {msg}"));
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+        let text = format!("FAMREV AI could not start.\n\n{msg}\n\nLog: {}", log_path().display());
+        let w = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+        let (t, c) = (w(&text), w("FAMREV AI"));
+        unsafe {
+            MessageBoxW(std::ptr::null_mut(), t.as_ptr(), c.as_ptr(), MB_OK | MB_ICONERROR);
+        }
+    }
+}
+
 // ------------------------------------------------------------------------------------------------- app
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| show_main(app)))
+    std::panic::set_hook(Box::new(|info| fail(&format!("panic: {info}"))));
+    slog("start");
+    let res = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            slog("second start: showing the running app");
+            show_main(app)
+        }))
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_denylist(&["quickbox"]) // the quick box always opens at the bottom centre
@@ -307,6 +346,7 @@ pub fn run() {
         .manage(QbState::default())
         .invoke_handler(tauri::generate_handler![qb_show, qb_hide, qb_toggle, qb_resize, open_main, open_program, open_link, capture_screen, app_info])
         .setup(|app| {
+            slog("setup: plugins loaded");
             let h = app.handle().clone();
             // main window: the local start page checks the server is reachable, then opens it
             WebviewWindowBuilder::new(&h, "main", WebviewUrl::App("index.html".into()))
@@ -316,10 +356,13 @@ pub fn run() {
                 .center()
                 .disable_drag_drop_handler() // files dragged onto FAMREV reach the page (attachments)
                 .additional_browser_args(BROWSER_ARGS)
-                .build()?;
-            quickbox(&h)?; // made now (hidden), so the hotkey shows it at once
+                .build()
+                .map_err(|e| { slog(&format!("main window failed: {e}")); e })?;
+            slog("setup: main window ok");
+            quickbox(&h).map_err(|e| { slog(&format!("quick box failed: {e}")); e })?;
+            slog("setup: quick box ok"); // made now (hidden), so the hotkey shows it at once
             if let Err(e) = h.global_shortcut().register(hotkey()) {
-                eprintln!("Ctrl+Alt+Space is taken by another program: {e}");
+                slog(&format!("Ctrl+Alt+Space is taken by another program: {e}"));
             }
             let open = MenuItem::with_id(&h, "open", "Open FAMREV", true, None::<&str>)?;
             let qb = MenuItem::with_id(&h, "qb", "Quick box\tCtrl+Alt+Space", true, None::<&str>)?;
@@ -349,7 +392,9 @@ pub fn run() {
                         }
                     }
                 })
-                .build(&h)?;
+                .build(&h)
+                .map_err(|e| { slog(&format!("tray failed: {e}")); e })?;
+            slog("setup: tray ok, started");
             Ok(())
         })
         .on_window_event(|win, ev| {
@@ -359,8 +404,10 @@ pub fn run() {
                 let _ = win.hide();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running FAMREV AI desktop");
+        .run(tauri::generate_context!());
+    if let Err(e) = res {
+        fail(&format!("{e}"));
+    }
 }
 
 
